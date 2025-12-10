@@ -16,6 +16,7 @@ import '../auth/login_screen.dart';
 import '../chat/inbox_screen.dart';
 import 'package:overlay_support/overlay_support.dart';
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -66,6 +67,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         // If we have MORE unread messages than before, Ding!
         if (currentCount > _lastUnreadCount) {
+           final player = AudioPlayer();
+           await player.play(AssetSource('sounds/ding.mp3'));
+
            showSimpleNotification(
               GestureDetector(
                 onTap: () {

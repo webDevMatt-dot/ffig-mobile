@@ -98,22 +98,37 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
-                final isMe = msg['is_me'];
-                return Align(
-                  alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isMe ? Theme.of(context).colorScheme.primary : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(16),
+                  final isMe = msg['is_me'];
+                  final isRead = msg['is_read'] ?? false;
+
+                  return Align(
+                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isMe ? Colors.amber[300] : Colors.grey[200],
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            msg['text'],
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(height: 4),
+                            Icon(
+                              isRead ? Icons.done_all : Icons.check, 
+                              size: 16,
+                              color: isRead ? Colors.blueAccent : Colors.black54, 
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    child: Text(
-                      msg['text'],
-                      style: TextStyle(color: isMe ? Colors.black : Colors.black87),
-                    ),
-                  ),
-                );
+                  );
               },
             ),
           ),

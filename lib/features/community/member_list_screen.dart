@@ -67,10 +67,28 @@ class _MemberListScreenState extends State<MemberListScreen> {
                 margin: const EdgeInsets.only(bottom: 16),
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    radius: 30,
-                    backgroundImage: NetworkImage(member['photo_url']),
-                    backgroundColor: Colors.grey[200],
+                  leading: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundImage: NetworkImage(member['photo_url'] ?? ''),
+                        backgroundColor: Colors.grey[200],
+                      ),
+                      if (member['is_online'] == true)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   title: Text(
                     member['username'], 
