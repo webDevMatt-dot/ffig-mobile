@@ -75,6 +75,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Image.asset(
+              'assets/images/logo.png',
+              height: 80,
+              width: 200,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 16),
             Text("Create your Account", style: GoogleFonts.playfairDisplay(fontSize: 28, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             const Text("Join the global network of female founders."),
