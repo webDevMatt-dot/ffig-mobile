@@ -1,12 +1,12 @@
+import 'dart:convert';
+import 'dart:io'; 
+import 'package:flutter/foundation.dart' show kIsWeb; 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter/foundation.dart'; // for kIsWeb
-import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:country_picker/country_picker.dart';
-import 'dart:io';
+import 'package:image_picker/image_picker.dart'; 
+import 'package:country_picker/country_picker.dart'; 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Added back
+import '../../core/api/constants.dart'; 
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,41 +16,31 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _businessController = TextEditingController();
-  final _industryController = TextEditingController();
-  final _locationController = TextEditingController();
-  final _bioController = TextEditingController();
-  
+  // --- VARIABLES ---
   bool _isLoading = true;
   bool _isSaving = false;
-
-  File? _imageFile;
-  String? _userPhotoUrl; // Store the URL from backend
+  
+  final TextEditingController _businessController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _bioController = TextEditingController();
+  
   String _selectedIndustry = 'OTH'; 
+  String? _userPhotoUrl; 
+  XFile? _pickedImage; 
 
-  final List<DropdownMenuItem<String>> _industryItems = const [
-    DropdownMenuItem(value: 'TECH', child: Text('Technology')),
-    DropdownMenuItem(value: 'FIN', child: Text('Finance')),
-    DropdownMenuItem(value: 'HLTH', child: Text('Healthcare')),
-    DropdownMenuItem(value: 'RET', child: Text('Retail')),
-    DropdownMenuItem(value: 'EDU', child: Text('Education')),
-    DropdownMenuItem(value: 'MED', child: Text('Media & Arts')),
-    DropdownMenuItem(value: 'LEG', child: Text('Legal')),
-    DropdownMenuItem(value: 'FASH', child: Text('Fashion')),
-    DropdownMenuItem(value: 'MAN', child: Text('Manufacturing')),
-    DropdownMenuItem(value: 'OTH', child: Text('Other')),
+  // Industry Options
+  final List<DropdownMenuItem<String>> _industryItems = [
+    const DropdownMenuItem(value: 'TECH', child: Text('Technology')),
+    const DropdownMenuItem(value: 'FIN', child: Text('Finance')),
+    const DropdownMenuItem(value: 'HLTH', child: Text('Healthcare')),
+    const DropdownMenuItem(value: 'RET', child: Text('Retail')),
+    const DropdownMenuItem(value: 'EDU', child: Text('Education')),
+    const DropdownMenuItem(value: 'MED', child: Text('Media & Arts')),
+    const DropdownMenuItem(value: 'LEG', child: Text('Legal')),
+    const DropdownMenuItem(value: 'FASH', child: Text('Fashion')),
+    const DropdownMenuItem(value: 'MAN', child: Text('Manufacturing')),
+    const DropdownMenuItem(value: 'OTH', child: Text('Other')),
   ];
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
 
   @override
   void initState() {
@@ -58,184 +48,200 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchMyProfile();
   }
 
-  // 1. GET Current Data
+  // --- API FUNCTIONS ---
+
   Future<void> _fetchMyProfile() async {
-    final token = await const FlutterSecureStorage().read(key: 'access_token');
-    
-    // Select URL based on device
-    // Select URL based on device
-    const String baseUrl = 'https://ffig-api.onrender.com/api/members/me/';
+    const storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'access_token');
+    if (token == null) return; // Should handle logout/redirect
 
     try {
       final response = await http.get(
-        Uri.parse(baseUrl),
-        headers: {'Authorization': 'Bearer $token'},
-      );
+          Uri.parse('${baseUrl}members/me/'),
+          headers: {'Authorization': 'Bearer $token'}
+      ); 
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          _businessController.text = data['business_name'] ?? '';
-          _industryController.text = data['industry'] ?? '';
-          _locationController.text = data['location'] ?? '';
-          _bioController.text = data['bio'] ?? '';
-        });
+        if (mounted) {
+          setState(() {
+            _businessController.text = data['business_name'] ?? '';
+            _locationController.text = data['location'] ?? '';
+            _bioController.text = data['bio'] ?? '';
+            _selectedIndustry = data['industry'] ?? 'OTH';
+            // Handle Photo URL logic
+            _userPhotoUrl = data['photo']; 
+            if (_userPhotoUrl == null && data['photo_url'] != null) {
+                _userPhotoUrl = data['photo_url'];
+            }
+            _isLoading = false;
+          });
+        }
       } else {
-        print("Error: ${response.statusCode} - ${response.body}");
+        throw Exception('Failed to load profile');
       }
     } catch (e) {
-      print("Connection Error: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
-    } catch (e) {
-      print("Connection Error: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // 2. SAVE Changes (Supports Image Upload)
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null) {
+      setState(() {
+        _pickedImage = image;
+      });
+    }
+  }
+
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
     const storage = FlutterSecureStorage();
     final token = await storage.read(key: 'access_token');
-    const String baseUrl = 'https://ffig-api.onrender.com/api/members/me/';
 
     try {
-      final request = http.MultipartRequest('PATCH', Uri.parse(baseUrl));
+      var request = http.MultipartRequest('PATCH', Uri.parse('${baseUrl}members/me/'));
       request.headers['Authorization'] = 'Bearer $token';
-
-      // Text Fields
+      
       request.fields['business_name'] = _businessController.text;
       request.fields['industry'] = _selectedIndustry;
       request.fields['location'] = _locationController.text;
       request.fields['bio'] = _bioController.text;
 
-      // File
-      if (_imageFile != null) {
-        request.files.add(await http.MultipartFile.fromPath('photo', _imageFile!.path));
+      if (_pickedImage != null) {
+        if (kIsWeb) {
+            var f = await _pickedImage!.readAsBytes();
+            request.files.add(http.MultipartFile.fromBytes(
+                'photo', 
+                f, 
+                filename: 'upload.jpg'
+            ));
+        } else {
+            request.files.add(await http.MultipartFile.fromPath(
+                'photo', 
+                _pickedImage!.path
+            ));
+        }
       }
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text("Profile Updated!"), backgroundColor: Colors.green),
-           );
-           // Refresh to show new photo URL if it changed
-           _fetchMyProfile();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Profile Saved!"), backgroundColor: Colors.green)
+          );
+          _fetchMyProfile(); 
         }
       } else {
-        print(response.body);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to save."), backgroundColor: Colors.red));
+        throw Exception("Server rejected update: ${response.statusCode}");
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red)
+        );
+      }
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
+  // --- UI ---
+
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      appBar: AppBar(title: const Text("MY PROFILE")),
+      appBar: AppBar(title: const Text("Edit Profile")),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Profile Pic
             GestureDetector(
               onTap: _pickImage,
               child: CircleAvatar(
-                radius: 50,
+                radius: 60,
                 backgroundColor: Colors.grey[200],
-                backgroundImage: _imageFile != null 
-                    ? FileImage(_imageFile!) 
-                    : (_userPhotoUrl != null ? NetworkImage(_userPhotoUrl!) : null) as ImageProvider?,
-                child: (_imageFile == null && _userPhotoUrl == null) 
-                    ? const Icon(Icons.camera_alt, size: 30, color: Colors.grey) 
+                backgroundImage: _pickedImage != null
+                    ? (kIsWeb 
+                        ? NetworkImage(_pickedImage!.path) 
+                        : FileImage(File(_pickedImage!.path)) as ImageProvider)
+                    : (_userPhotoUrl != null ? NetworkImage(_userPhotoUrl!) : null),
+                child: (_pickedImage == null && _userPhotoUrl == null)
+                    ? const Icon(Icons.camera_alt, size: 30, color: Colors.grey)
                     : null,
               ),
             ),
             const SizedBox(height: 8),
-            Text("Tap to change photo", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-            const SizedBox(height: 32),
-
-            // Form Fields
-            _buildTextField("Business Name", _businessController, Icons.business),
-            const SizedBox(height: 16),
+            const Text("Tap to change photo", style: TextStyle(color: Colors.grey)),
             
-            // INDUSTRY DROPDOWN
+            const SizedBox(height: 24),
+
+            TextField(
+              controller: _businessController,
+              decoration: const InputDecoration(labelText: "Business Name", prefixIcon: Icon(Icons.business)),
+            ),
+            const SizedBox(height: 16),
+
             DropdownButtonFormField<String>(
               value: _selectedIndustry,
-              decoration: InputDecoration(
-                labelText: "Industry",
-                prefixIcon: const Icon(Icons.work_outline),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: Colors.grey[50],
-              ),
+              decoration: const InputDecoration(labelText: "Industry", prefixIcon: Icon(Icons.work)),
               items: _industryItems,
               onChanged: (val) => setState(() => _selectedIndustry = val!),
             ),
             const SizedBox(height: 16),
-            
-            // LOCATION PICKER
-            GestureDetector(
-                onTap: () {
-                    showCountryPicker(
-                    context: context,
-                    onSelect: (Country country) {
-                        setState(() {
-                        _locationController.text = country.displayNameNoCountryCode; 
-                        });
-                    },
-                    );
-                },
-                child: AbsorbPointer( // Prevent manual typing
-                    child: _buildTextField("Location", _locationController, Icons.location_on_outlined),
-                ),
+
+            TextField(
+              controller: _locationController,
+              readOnly: true, 
+              decoration: const InputDecoration(
+                labelText: "Location", 
+                prefixIcon: Icon(Icons.location_on),
+                suffixIcon: Icon(Icons.arrow_drop_down),
+              ),
+              onTap: () {
+                showCountryPicker(
+                  context: context,
+                  onSelect: (Country country) {
+                    setState(() {
+                      _locationController.text = country.displayNameNoCountryCode; 
+                    });
+                  },
+                );
+              },
             ),
             const SizedBox(height: 16),
-            _buildTextField("Bio / Mission", _bioController, Icons.short_text, maxLines: 3),
-            
+
+            TextField(
+              controller: _bioController,
+              decoration: const InputDecoration(labelText: "Bio / Mission", prefixIcon: Icon(Icons.info)),
+              maxLines: 3,
+            ),
             const SizedBox(height: 32),
 
-            // Save Button
             SizedBox(
               width: double.infinity,
-              height: 50,
               child: ElevatedButton(
                 onPressed: _isSaving ? null : _saveProfile,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.black,
+                  backgroundColor: Colors.amber, 
+                  padding: const EdgeInsets.symmetric(vertical: 16)
                 ),
                 child: _isSaving 
-                  ? const CircularProgressIndicator(color: Colors.black)
-                  : const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ? const CircularProgressIndicator(color: Colors.white) 
+                  : const Text("SAVE CHANGES", style: TextStyle(fontSize: 16, color: Colors.black)),
               ),
-            ),
+            )
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1}) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: Colors.grey[600]),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        filled: true,
-        fillColor: Colors.grey[50],
       ),
     );
   }
