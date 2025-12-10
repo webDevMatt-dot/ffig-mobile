@@ -68,19 +68,28 @@ class _MemberListScreenState extends State<MemberListScreen> {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
                   leading: Stack(
+                    clipBehavior: Clip.none,
                     children: [
                       CircleAvatar(
-                        radius: 24,
-                        backgroundImage: NetworkImage(member['photo_url'] ?? ''),
+                        radius: 28,
+                        backgroundImage: member['photo'] != null 
+                             ? NetworkImage(member['photo']) 
+                             : NetworkImage(member['photo_url'] ?? ''),
                         backgroundColor: Colors.grey[200],
                       ),
+                      if (member['is_premium'] == true)
+                        const Positioned(
+                          top: -4, 
+                          right: -4, 
+                          child: Icon(Icons.stars, color: Colors.amber, size: 20, shadows: [Shadow(blurRadius: 2, color: Colors.black26)])
+                        ),
                       if (member['is_online'] == true)
                         Positioned(
                           bottom: 0,
                           right: 0,
                           child: Container(
-                            width: 12,
-                            height: 12,
+                            width: 14,
+                            height: 14,
                             decoration: BoxDecoration(
                               color: Colors.green,
                               shape: BoxShape.circle,
@@ -107,15 +116,36 @@ class _MemberListScreenState extends State<MemberListScreen> {
                       Text("${member['industry']} • ${member['location']}"),
                     ],
                   ),
-                  trailing: Icon(Icons.chat_bubble_outline, size: 20, color: Theme.of(context).colorScheme.primary),
+                  trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
                   
-                  // HERE IS THE CORRECTED SINGLE ONTAP
                   onTap: () async {
                     const storage = FlutterSecureStorage();
                     final isPremiumString = await storage.read(key: 'is_premium');
-                    final bool isPremium = isPremiumString == 'true';
+                    final bool iAmPremium = isPremiumString == 'true';
+                    final bool memberIsPremium = member['is_premium'] ?? false;
 
-                    if (isPremium) {
+                    // The Velvet Rope: Restrict access if SHE is Premium and I am NOT
+                    if (memberIsPremium && !iAmPremium) {
+                         showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text("VIP Member 🔒"),
+                            content: const Text("This founder is in the Premium Circle. Upgrade your membership to connect with her."),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) => const LockedScreen())); // Actually PremiumScreen would be better but LockedScreen sells it
+                                },
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                                child: const Text("Upgrade Now", style: TextStyle(color: Colors.black)),
+                              )
+                            ],
+                          )
+                         );
+                    } else {
+                      // Access Granted
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -125,8 +155,6 @@ class _MemberListScreenState extends State<MemberListScreen> {
                           ),
                         ),
                       );
-                    } else {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const LockedScreen()));
                     }
                   },
                 ),

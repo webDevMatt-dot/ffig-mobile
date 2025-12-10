@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:country_picker/country_picker.dart';
+import 'dart:io';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,6 +23,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   
   bool _isLoading = true;
   bool _isSaving = false;
+
+  File? _imageFile;
+  String? _userPhotoUrl; // Store the URL from backend
+  String _selectedIndustry = 'OTH'; 
+
+  final List<DropdownMenuItem<String>> _industryItems = const [
+    DropdownMenuItem(value: 'TECH', child: Text('Technology')),
+    DropdownMenuItem(value: 'FIN', child: Text('Finance')),
+    DropdownMenuItem(value: 'HLTH', child: Text('Healthcare')),
+    DropdownMenuItem(value: 'RET', child: Text('Retail')),
+    DropdownMenuItem(value: 'EDU', child: Text('Education')),
+    DropdownMenuItem(value: 'MED', child: Text('Media & Arts')),
+    DropdownMenuItem(value: 'LEG', child: Text('Legal')),
+    DropdownMenuItem(value: 'FASH', child: Text('Fashion')),
+    DropdownMenuItem(value: 'MAN', child: Text('Manufacturing')),
+    DropdownMenuItem(value: 'OTH', child: Text('Other')),
+  ];
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -54,15 +85,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       print("Connection Error: $e");
-    } finally {
-      // THIS IS THE FIX: Always stop loading
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
+    } catch (e) {
+      print("Connection Error: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // 2. SAVE Changes (PATCH)
+  // 2. SAVE Changes (Supports Image Upload)
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
     const storage = FlutterSecureStorage();
@@ -70,39 +101,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const String baseUrl = 'https://ffig-api.onrender.com/api/members/me/';
 
     try {
-      final response = await http.patch(
-        Uri.parse(baseUrl),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'business_name': _businessController.text,
-          'industry': _industryController.text,
-          'location': _locationController.text,
-          'bio': _bioController.text,
-        }),
-      );
+      final request = http.MultipartRequest('PATCH', Uri.parse(baseUrl));
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // Text Fields
+      request.fields['business_name'] = _businessController.text;
+      request.fields['industry'] = _selectedIndustry;
+      request.fields['location'] = _locationController.text;
+      request.fields['bio'] = _bioController.text;
+
+      // File
+      if (_imageFile != null) {
+        request.files.add(await http.MultipartFile.fromPath('photo', _imageFile!.path));
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Profile Updated Successfully!"), backgroundColor: Colors.green),
-          );
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text("Profile Updated!"), backgroundColor: Colors.green),
+           );
+           // Refresh to show new photo URL if it changed
+           _fetchMyProfile();
         }
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Failed to save."), backgroundColor: Colors.red),
-          );
-        }
+        print(response.body);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to save."), backgroundColor: Colors.red));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       setState(() => _isSaving = false);
     }
@@ -118,22 +147,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            // Profile Pic Placeholder
-            const CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.black12,
-              child: Icon(Icons.person, size: 50, color: Colors.white),
+            // Profile Pic
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: Colors.grey[200],
+                backgroundImage: _imageFile != null 
+                    ? FileImage(_imageFile!) 
+                    : (_userPhotoUrl != null ? NetworkImage(_userPhotoUrl!) : null) as ImageProvider?,
+                child: (_imageFile == null && _userPhotoUrl == null) 
+                    ? const Icon(Icons.camera_alt, size: 30, color: Colors.grey) 
+                    : null,
+              ),
             ),
             const SizedBox(height: 8),
-            Text("Tap to change photo (Coming Soon)", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            Text("Tap to change photo", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
             const SizedBox(height: 32),
 
             // Form Fields
             _buildTextField("Business Name", _businessController, Icons.business),
             const SizedBox(height: 16),
-            _buildTextField("Industry", _industryController, Icons.work_outline),
+            
+            // INDUSTRY DROPDOWN
+            DropdownButtonFormField<String>(
+              value: _selectedIndustry,
+              decoration: InputDecoration(
+                labelText: "Industry",
+                prefixIcon: const Icon(Icons.work_outline),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+              items: _industryItems,
+              onChanged: (val) => setState(() => _selectedIndustry = val!),
+            ),
             const SizedBox(height: 16),
-            _buildTextField("Location", _locationController, Icons.location_on_outlined),
+            
+            // LOCATION PICKER
+            GestureDetector(
+                onTap: () {
+                    showCountryPicker(
+                    context: context,
+                    onSelect: (Country country) {
+                        setState(() {
+                        _locationController.text = country.displayNameNoCountryCode; 
+                        });
+                    },
+                    );
+                },
+                child: AbsorbPointer( // Prevent manual typing
+                    child: _buildTextField("Location", _locationController, Icons.location_on_outlined),
+                ),
+            ),
             const SizedBox(height: 16),
             _buildTextField("Bio / Mission", _bioController, Icons.short_text, maxLines: 3),
             
